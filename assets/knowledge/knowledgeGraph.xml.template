@@ -1,0 +1,22 @@
+<KnowledgeGraph LAST_UPDATED="[REQUIRED]">
+  <APP_Overview>
+    <!-- Description of the entire application -->
+  </APP_Overview>
+  
+  <!--
+    SYSTEM represents a self-contained deployable unit of the application.
+    Think of it as a service, worker, or job.
+    A system is NOT a feature group — it's an autonomous runtime boundary.
+  -->
+  <Systems>
+    <!--
+      SYS_STATUS values: planned | in_progress | implemented
+    -->
+    <!-- SYS_IMPLEMENTS: reference to USECASE_ from docs/requirements.xml -->
+    <!-- SYS_NAME PascalCase system name -->
+    <SYSTEM_{ID} SYS_NAME="[REQUIRED]" SYS_STATUS="[REQUIRED]" KG_PATH="docs/systems/[SYS_NAME]/knowledgeGraph.xml [REQUIRED]" SYS_IMPLEMENTS="[REQUIRED]">
+        <Responsibility> <!-- One sentence: business responsibility of this system within the whole application --> </Responsibility>
+    </SYSTEM_{ID}>
+  </Systems> 
+</KnowledgeGraph>
+ 

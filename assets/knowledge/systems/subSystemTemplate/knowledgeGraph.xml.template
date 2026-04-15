@@ -1,0 +1,146 @@
+<!--
+  RELATION values:
+  - calls         | synchronous method call
+  - instantiates  | creates an instance
+  - inherits      | inherits a class
+  - implements    | implements an interface / Protocol
+  - reads         | reads entity data
+  - writes        | mutates entity data
+  - transforms    | accepts and returns the same type
+  - emits         | publishes an event / message
+  - consumes      | subscribed to an event / queue
+  - stores-in     | persists data via storage
+  - configured-by | receives configuration from a source
+-->
+<!-- SYS_ID should be the same id used in root knowledge graph -->
+<!-- SYS_STATUS values: planned | in_progress | implemented -->
+<SYSTEM_{SYS_ID} SYS_STATUS="[REQUIRED]" LAST_UPDATED="[REQUIRED]">
+  <SYS_Overview_{SYS_ID}>
+    <!-- Domain, system goal, key users, main scenarios (1-2 sentences) -->
+  </SYS_Overview_{SYS_ID}>
+
+  <TechStack_{SYS_ID}>
+
+    <LANG NAME="[REQUIRED]" VERSION="[REQUIRED]"/>
+
+    <Libs>
+      <LIB_{ID}>
+        <Name></Name>
+        <Version></Version>
+      </LIB_{ID}>
+    </Libs>
+
+    <Storage>
+      <!-- DB(type, engine, version) | FS | S3-compatible -->
+      <STORAGE_{ID}>
+        <Name></Name>
+        <Type></Type>
+        <Version></Version>
+        <SchemaMigrationSteps>
+        <!-- If applicable for given storage type, populate clear steps to migrate schema -->
+        <!-- For example, if ORM is used and it has migration built-it you need to list step by step commands to execute. -->
+          <STORAGE_SCHEMA_{ID}>command to run migration</STORAGE_SCHEMA_{ID}>
+        </SchemaMigrationSteps>
+      </STORAGE_{ID}>
+    </Storage>
+
+    <Infra>
+      <INFRA_{ID}">
+        <Description></Description>
+        <Name></Name>
+        <Version></Version>
+      </INFRA_{ID}>
+    </Infra>
+
+    <LocalRun>
+      <!--Describe in steps how to run system locally --> 
+      <LOCAL_RUN_{ID}></LOCAL_RUN_{ID}>
+    </LocalRun>
+
+    <Testing>
+      <!--Describe in steps how to run tests--> 
+      <TEST_STEP_{ID}></TEST_STEP_{ID}>
+    </Testing>
+  </TechStack_{SYS_ID}>
+
+  <Constraints_{SYS_ID}>
+    <!-- System level constraints -->
+    <SYS_CONSTRAINT_{ID}>
+      <!-- What is globally forbidden across components -->
+    </SYS_CONSTRAINT_{ID}>
+  </Constraints_{SYS_ID}>
+
+  <Entities_{SYS_ID}>
+    <ENTITY_{NAME} PATH="[REQUIRED]">
+      <Description>
+        <!-- What this entity represents in the domain -->
+      </Description>
+
+      <Dependencies>
+        <!--TARGET must be full unique tag.-->
+        <DependsOn TARGET="[REQUIRED]" RELATION="[REQUIRED]"/>
+      </Dependencies>
+    </ENTITY_{NAME}>
+  </Entities_{SYS_ID}>
+
+
+  <!-- CODE_STRUCTURE could be: layered | hexagonal | clean, but you could propose yours -->
+  <Architecture_{SYS_ID} CODE_STRUCTURE="[REQUIRED]">
+
+    <!--  
+      COMPONENT represents an architectural layer within a system.
+      Think of it as a boundary that groups modules by their architectural role
+      (e.g. presentation, domain, infrastructure), not by business feature.
+    -->
+    <Components>
+
+      <!-- COMP_STATUS values: planned | partial | implemented -->
+      <!-- COMP_IMPLEMENTS: reference to USECASE_ from docs/requirements.xml. -->
+      <COMPONENT_{ID} PATH="[REQUIRED]" COMP_STATUS="[REQUIRED]" COMP_IMPLEMENTS="USECASE_{ID} [OPTIONAL]">
+        <Description>
+          <!-- What lives in this component -->
+        </Description>
+
+        <Constraints>
+          <COMP_CONSTRAINT_{ID}>
+            <!-- What this component is forbidden to do -->
+          </COMP_CONSTRAINT_{ID}>
+        </Constraints>
+
+        <Dependencies>
+          <!-- List there component dependenies. Link can be added to any unique ID --> 
+          <DependsOn TARGET="{UNIQUE_ID} [REQUIRED]" RELATION="[REQUIRED]"/>
+        </Dependencies>
+
+        <!--
+          MODULE is the smallest independent unit of implementation within a component
+          A module is NOT a single function or class — it's a cohesive group
+          of code that implements one well-defined behavior.
+        -->
+        <Modules>
+          <!-- MOD_STATUS values: planned | in_progress | implemented -->
+          <!-- MOD_IMPLEMENTS: reference to USECASE_ from docs/requirements.xml. -->
+          <MODULE_{ID} PATH="[REQUIRED]" MOD_STATUS="[REQUIRED]" MOD_IMPLEMENTS="USECASE_{ID} [OPTIONAL]">
+            <Description>
+              <!-- What this module does -->
+            </Description>
+
+            <Constraints>
+              <MOD_CONSTRAINT_{ID}>
+                <!-- What this module is forbidden to do -->
+              </MOD_CONSTRAINT_{ID}>
+            </Constraints>
+
+            <Dependencies>
+              <!-- List there module dependenies. Link can be added to any unique ID --> 
+              <DependsOn TARGET="ENTITY_{ID}" RELATION="{ID}"/>
+              <DependsOn TARGET="MODULE_{ID}" RELATION="{ID}"/>
+            </Dependencies>
+          </MODULE_{ID}>
+        </Modules>
+
+      </COMPONENT_{ID}>
+    </Components>
+  </Architecture_{SYS_ID}>
+
+</SYSTEM_{SYS_ID}>

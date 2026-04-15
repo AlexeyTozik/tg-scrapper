@@ -1,0 +1,151 @@
+<!--
+  RELATION values:
+  - calls         | synchronous method call
+  - instantiates  | creates an instance
+  - inherits      | inherits a class
+  - implements    | implements an interface / Protocol
+  - reads         | reads entity data
+  - writes        | mutates entity data
+  - transforms    | accepts and returns the same type
+  - emits         | publishes an event / message
+  - consumes      | subscribed to an event / queue
+  - stores-in     | persists data via storage
+  - configured-by | receives configuration from a source
+-->
+<TASK_PLAN_{TASK_ID}>
+  <ArchitectureNotes>
+    <!-- High-signal planning notes. -->
+      <TaskObjective>What this plan optimizes for.</TaskObjective>
+      <TaskNonGoal_{ID}>What the implementation should explicitly avoid.</TaskNonGoal_{ID}>
+      <TaskRisk_{ID}>Key design risk to watch during execution.</TaskRisk_{ID}>
+      <KGUpdateRequired>true | false</KGUpdateRequired>
+  </ArchitectureNotes>
+
+  <!-- OPTIONAL block. If there are no modules involved, ignore it -->
+  <!-- EXISTING: true | false -->
+  <Modules>
+      <MODULE_{ID} NAME="[REQUIRED]" EXISTING="[REQUIRED]">
+        <Contract>
+          <Purpose>What this module does</Purpose>
+          <Inputs>
+            <param_{ID} NAME="[REQUIRED]" TYPE="[REQUIRED]" />
+          </Inputs>
+          <Outputs>
+            <Param NAME="[REQUIRED]" TYPE="[REQUIRED]" />
+          </Outputs>
+          <Errors>
+            <ERR_{ID} CODE="[REQUIRED]" />
+          </Errors>
+        </Contract>
+        
+        <!-- EXISTING=new, then Dependencies are necessary. -->
+        <Dependencies>
+            <DependsOn TARGET="MODULE_{ID}" RELATION="[REQUIRED]"/>
+        </Dependencies>
+
+        <TargetFiles>
+          <Sources>
+            <Path>path/to/module</Path>
+            <Path>path/to/module</Path>
+          </Sources>
+          <Tests>
+            <Test>path/to/module.test</Test>
+            <Test>path/to/module.test</Test>
+          </Tests>
+        </TargetFiles>
+
+        <Observability>
+          <ModuleLogPrefix>[ModuleName]</ModuleLogPrefix>
+        </Observability>
+      </MODULE_{ID}>
+  </Modules>
+
+  <VerificationPlan>
+
+    <Observability>
+      <LOG_{ID}><!-- What specific log messages must be emitted? --></LOG_{ID}>
+    </Observability>
+    
+    <TestCases>
+      <TEST_{ID}>
+        <Scenario><!-- Given X, when Y, then Z --></Scenario>
+      </TEST_{ID}>
+    </TestCases>
+  </VerificationPlan>
+
+
+  <!-- Only populate this block after a code review and move task to "feedback" status -->
+  <ReviewHistory>
+      <ITER_{ID}>
+          <Summary><!-- What is wrong and what must be fixed. --></Summary>
+          <ViolatedConstraints>
+              <REQ_CONSTRAINT_{ID}><!-- What's violated --></REQ_CONSTRAINT_{ID}>
+              <COMP_CONSTRAINT_{ID}><!-- What's violated --></COMP_CONSTRAINT_{ID}>
+              <MOD_CONSTRAINT_{ID}><!-- What's violated --></MOD_CONSTRAINT_{ID}>
+          </ViolatedConstraints>
+          <PossibleBugs>
+              <BUG_{ID}></BUG_{ID}>
+          </PossibleBugs>
+      </ITER_{ID}>
+  </ReviewHistory>
+
+  <!-- 
+    Filled before moving task to to_review.
+    Omit the entire block only if all sub-blocks have nothing to report:
+    - Discrepancies: skip if implementation matched the plan exactly
+    - KGUpdate: skip if no structural changes relative to knowledgeGraph.xml
+    - Ops: skip if task type is not ops
+  -->
+  <ExecutionNotes>
+
+    <!-- Discrepancies from defined plan -->
+    <Discrepancies>
+      <MODULE_{ID}>
+        <Note><!-- Rational why this happen --></Note>
+      </MODULE_{ID}>
+    </Discrepancies>
+
+    <!-- Populate this only for ops type tasks -->
+    <Ops>
+      <!-- Document what was done and how to verify the environment for ops tasks. -->
+      <StepsDone>
+        <OPS_STEP_{ID}></OPS_STEP_{ID}>
+      </StepsDone>
+      <HowToVerify></HowToVerify>
+    </Ops>
+
+    <KGUpdate>
+      <Added>
+        <MODULE_{ID} COMPONENT="COMPONENT_{ID}" PATH="[REQUIRED]" MOD_STATUS="[REQUIRED]" MOD_IMPLEMENTS="USECASE_{ID} [OPTIONAL]">
+            <Description>
+              <!-- What this module does -->
+            </Description>
+
+            <Constraints>
+              <MOD_CONSTRAINT_{ID}>
+                <!-- What this module is forbidden to do -->
+              </MOD_CONSTRAINT_{ID}>
+            </Constraints>
+
+            <Dependencies>
+              <!-- List there module dependenies. Link can be added to any unique ID --> 
+              <DependsOn TARGET="ENTITY_{ID}" RELATION="{ID}"/>
+              <DependsOn TARGET="MODULE_{ID}" RELATION="{ID}"/>
+            </Dependencies>
+        </MODULE_{ID}>
+      </Added>
+
+      <Changed>
+        <MODULE_{ID}>
+          <Description><!-- Description what changed in module and reuires changes in KG --></Description>
+          <Reason><!-- Why chage is needed --></Reason>
+        </MODULE_{ID}>
+      </Changed>
+
+      <Removed>
+        <MODULE_{ID} REASON=""/>
+      </Removed>
+
+    </KGUpdate>
+  </ExecutionNotes>
+</TASK_PLAN_{TASK_ID}>

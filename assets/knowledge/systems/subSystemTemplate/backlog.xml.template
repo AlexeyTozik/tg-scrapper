@@ -1,0 +1,25 @@
+<Backlog SYSTEM="SYSTEM_{SYS_ID} [REQUIRED]" LAST_UPDATED="[REQUIRED]">
+    <!-- 
+        TASK_TYPE: feature | refactor | bug | ops
+        TASK_STATUS: new | planning | ready | in_progress | to_review | feedback | done
+        TASK_PRIORITY: high | medium | low 
+        TASK_STATUS:
+            new → planning
+            planning → ready
+            ready → in_progress
+            in_progress → to_review
+            to_review → feedback (code changes requested)
+            feedback → in_progress
+            to_review → done    
+        TASK_IMPLEMENTS: optional relation to use case. If populated must place USECASE_{ID} 
+    -->
+    <TASK_{ID} TASK_TYPE="[REQUIRED]" TASK_STATUS="[REQUIRED]" TASK_PRIORITY="[REQUIRED]" TASK_IMPLEMENTS="[OPTIONAL]">
+        <BlockedBy TARGET="TASK_{ID} [OPTIONAL]"/>
+        <!-- DevPlan don't needs to be created when task in 'new' status. Planning is a separate step. -->
+        <DevPlan PATH="docs/systems/[SYS_NAME]/plans/YYYY-MM-DD_TASK_{ID}.xml [REQUIRED after planning status]"/>
+        <Description>
+                <Why><!-- Why this task is needed --></Why>
+                <What><!-- What this task implements --></What>
+        </Description>
+    </TASK_{ID}>
+</Backlog>

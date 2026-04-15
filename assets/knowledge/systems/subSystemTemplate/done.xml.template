@@ -1,0 +1,39 @@
+<DoneArchive SYSTEM="SYSTEM_{SYS_ID} [REQUIRED]" LAST_UPDATED="[REQUIRED]">
+    <!--
+        Сompleted tasks for this system.
+        TASK_TYPE: feature | refactor | bug | ops
+        TASK_PRIORITY: high | medium | low
+        TASK_IMPLEMENTS: optional relation to use case. If populated must reference USECASE_{ID}
+        COMPLETED_DATE: YYYY-MM-DD
+    -->
+    <TASK_{ID}
+        TASK_TYPE="[REQUIRED]"
+        TASK_PRIORITY="[REQUIRED]"
+        TASK_IMPLEMENTS="[OPTIONAL]"
+        COMPLETED_DATE="[REQUIRED]">
+
+        <!-- Reference to the development plan used during implementation -->
+        <DevPlan PATH="docs/systems/[SYS_NAME]/plans/YYYY-MM-DD_TASK_{ID}.xml [REQUIRED if exists]"/>
+
+        <Description>
+            <Why><!-- Why this task was needed --></Why>
+            <What><!-- What this task implemented --></What>
+        </Description>
+
+        <!-- Full review history preserved for retrospective -->
+        <ReviewHistory>
+            <ITER_{ID}>
+                <Summary><!-- What was wrong and what was fixed --></Summary>
+                <ViolatedConstraints>
+                    <REQ_CONSTRAINT_{ID}><!-- What was violated --></REQ_CONSTRAINT_{ID}>
+                    <COMP_CONSTRAINT_{ID}><!-- What was violated --></COMP_CONSTRAINT_{ID}>
+                    <MOD_CONSTRAINT_{ID}><!-- What was violated --></MOD_CONSTRAINT_{ID}>
+                </ViolatedConstraints>
+                <PossibleBugs>
+                    <BUG_{ID}><!-- Bug found during review --></BUG_{ID}>
+                </PossibleBugs>
+            </ITER_{ID}>
+        </ReviewHistory>
+
+    </TASK_{ID}>
+</DoneArchive>
