@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from telethon import TelegramClient, errors
+from telethon.tl.types import PeerChannel
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +69,10 @@ def serialize_message(msg: Any) -> dict[str, Any]:
         "post_author": getattr(msg, "post_author", None),
         "grouped_id": getattr(msg, "grouped_id", None),
         "has_media": msg.media is not None,
+        "action_type": type(msg.action).__name__ if getattr(msg, "action", None) else None,
+        "action": msg.action.to_dict() if getattr(msg, "action", None) else None,
+        "media_type": type(msg.media).__name__ if getattr(msg, "media", None) else None,
+        "buttons": bool(getattr(msg, "buttons", None)),
     }
 
 
@@ -108,7 +113,7 @@ async def export_messages(client: TelegramClient, args: argparse.Namespace) -> N
     state_path = Path(args.state)
     state = load_state(state_path)
 
-    entity = await client.get_entity(args.channel)
+    entity = await client.get_input_entity(PeerChannel(1467914348))
     logging.info("Resolved entity: %s", getattr(entity, "title", None) or getattr(entity, "username", None))
 
     batch: list[Any] = []
