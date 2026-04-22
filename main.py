@@ -1,14 +1,14 @@
 import argparse
 import asyncio
-import json
 import logging
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from telethon import TelegramClient, errors
 from telethon.tl.types import PeerChannel
+
+from app_support import append_jsonl, get_first_env, load_json_dict, load_repo_dotenv, save_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,8 +40,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_state(path: Path) -> dict[str, Any]:
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    state = load_json_dict(path)
+    if state is not None:
+        return state
     return {
         "last_id": 0,
         "saved_messages": 0,
@@ -51,7 +52,7 @@ def load_state(path: Path) -> dict[str, Any]:
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
     state["updated_at"] = datetime.now(UTC).isoformat()
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_json(path, state, indent=2)
 
 
 def serialize_message(msg: Any) -> dict[str, Any]:
@@ -74,13 +75,6 @@ def serialize_message(msg: Any) -> dict[str, Any]:
         "media_type": type(msg.media).__name__ if getattr(msg, "media", None) else None,
         "buttons": bool(getattr(msg, "buttons", None)),
     }
-
-
-def append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def parse_channel_ref(channel: str) -> str | PeerChannel:
@@ -190,9 +184,10 @@ async def export_messages(client: TelegramClient, args: argparse.Namespace) -> N
 
 async def main() -> None:
     args = parse_args()
+    load_repo_dotenv()
 
-    api_id = os.getenv("TG_API_ID")
-    api_hash = os.getenv("TG_API_HASH")
+    api_id = get_first_env("TG_API_ID")
+    api_hash = get_first_env("TG_API_HASH")
 
     if not api_id or not api_hash:
         raise RuntimeError("Set TG_API_ID and TG_API_HASH environment variables")

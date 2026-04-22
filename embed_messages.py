@@ -1,13 +1,20 @@
 import argparse
-import json
 import logging
-from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
 
 from sentence_transformers import SentenceTransformer
 
-JsonObject = dict[str, object]
+from app_support import (
+    JsonObject,
+    append_jsonl,
+    get_optional_int,
+    get_optional_str,
+    get_required_int,
+    iter_jsonl,
+    load_json_dict,
+    save_json,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,10 +64,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_state(path: Path) -> JsonObject:
-    if path.exists():
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(raw, dict):
-            return cast(JsonObject, raw)
+    state = load_json_dict(path)
+    if state is not None:
+        return cast(JsonObject, state)
 
     return {
         "processed_lines": 0,
@@ -70,33 +76,7 @@ def load_state(path: Path) -> JsonObject:
 
 
 def save_state(path: Path, state: JsonObject) -> None:
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def append_jsonl(path: Path, rows: list[JsonObject]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as file:
-        for row in rows:
-            file.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def get_required_int(row: JsonObject, key: str) -> int:
-    value = row.get(key)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f'Field "{key}" is missing or not an int')
-    return value
-
-
-def get_optional_int(row: JsonObject, key: str) -> int | None:
-    value = row.get(key)
-    if isinstance(value, bool):
-        return None
-    return value if isinstance(value, int) else None
-
-
-def get_optional_str(row: JsonObject, key: str) -> str | None:
-    value = row.get(key)
-    return value if isinstance(value, str) else None
+    save_json(path, state, indent=2)
 
 
 def extract_message_text(row: JsonObject) -> str | None:
@@ -107,34 +87,6 @@ def extract_message_text(row: JsonObject) -> str | None:
             if cleaned:
                 return cleaned
     return None
-
-
-def iter_jsonl(path: Path, skip_lines: int) -> tuple[int, JsonObject] | None:
-    with path.open("r", encoding="utf-8") as file:
-        for line_number, line in enumerate(file, start=1):
-            if line_number <= skip_lines:
-                continue
-
-            raw = json.loads(line)
-            if not isinstance(raw, dict):
-                raise ValueError(f"Line {line_number} is not a JSON object")
-
-            return line_number, cast(JsonObject, raw)
-
-    return None
-
-
-def iter_remaining_jsonl(path: Path, skip_lines: int) -> Iterator[tuple[int, JsonObject]]:
-    with path.open("r", encoding="utf-8") as file:
-        for line_number, line in enumerate(file, start=1):
-            if line_number <= skip_lines:
-                continue
-
-            raw = json.loads(line)
-            if not isinstance(raw, dict):
-                raise ValueError(f"Line {line_number} is not a JSON object")
-
-            yield line_number, cast(JsonObject, raw)
 
 
 def build_output_rows(
@@ -182,6 +134,17 @@ def embed_batch(
     return vectors
 
 
+def get_target_batch_size(batch_size: int, max_messages: int, saved_embeddings: int) -> int:
+    if max_messages <= 0:
+        return batch_size
+
+    remaining = max_messages - saved_embeddings
+    if remaining <= 0:
+        return 0
+
+    return min(batch_size, remaining)
+
+
 def export_embeddings(args: argparse.Namespace) -> None:
     input_path = Path(args.input)
     output_path = Path(args.output)
@@ -200,11 +163,21 @@ def export_embeddings(args: argparse.Namespace) -> None:
     skipped_empty = get_optional_int(state, "skipped_empty") or 0
 
     logging.info("Loading model: %s", args.model)
-    model = SentenceTransformer("./models/multilingual-e5-small", local_files_only=True, device=args.device)
+    model = SentenceTransformer(
+        args.model,
+        cache_folder=str(cache_dir),
+        local_files_only=args.offline,
+        device=args.device,
+    )
 
     batch: list[tuple[int, JsonObject, str]] = []
 
-    for line_number, row in iter_remaining_jsonl(input_path, processed_lines):
+    for line_number, row in iter_jsonl(input_path, processed_lines):
+        target_batch_size = get_target_batch_size(args.batch_size, args.max_messages, saved_embeddings)
+        if target_batch_size == 0:
+            logging.info("Reached max-messages=%s", args.max_messages)
+            return
+
         text = extract_message_text(row)
 
         if text is None:
@@ -214,10 +187,10 @@ def export_embeddings(args: argparse.Namespace) -> None:
 
         batch.append((line_number, row, text))
 
-        if len(batch) < args.batch_size:
+        if len(batch) < target_batch_size:
             continue
 
-        vectors = embed_batch(model, batch, args.batch_size)
+        vectors = embed_batch(model, batch, target_batch_size)
         output_rows = build_output_rows(batch, vectors, args.model)
         append_jsonl(output_path, output_rows)
 
@@ -246,11 +219,17 @@ def export_embeddings(args: argparse.Namespace) -> None:
             return
 
     if batch:
-        vectors = embed_batch(model, batch, args.batch_size)
-        output_rows = build_output_rows(batch, vectors, args.model)
+        target_batch_size = get_target_batch_size(args.batch_size, args.max_messages, saved_embeddings)
+        if target_batch_size == 0:
+            logging.info("Reached max-messages=%s", args.max_messages)
+            return
+
+        final_batch = batch[:target_batch_size]
+        vectors = embed_batch(model, final_batch, target_batch_size)
+        output_rows = build_output_rows(final_batch, vectors, args.model)
         append_jsonl(output_path, output_rows)
 
-        processed_lines = batch[-1][0]
+        processed_lines = final_batch[-1][0]
         saved_embeddings += len(output_rows)
 
         state = {
