@@ -83,6 +83,29 @@ def append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def parse_channel_ref(channel: str) -> str | PeerChannel:
+    if channel.startswith("-100") and channel[4:].isdigit():
+        return PeerChannel(int(channel[4:]))
+
+    if channel.isdigit():
+        return PeerChannel(int(channel))
+
+    return channel
+
+
+async def resolve_entity(client: TelegramClient, channel: str) -> str | PeerChannel | Any:
+    channel_ref = parse_channel_ref(channel)
+
+    try:
+        return await client.get_input_entity(channel_ref)
+    except ValueError:
+        if isinstance(channel_ref, PeerChannel):
+            # Numeric peer IDs require the entity cache to be populated first.
+            await client.get_dialogs()
+            return await client.get_input_entity(channel_ref)
+        raise
+
+
 async def flush_batch(
     batch: list[Any],
     out_path: Path,
@@ -113,7 +136,7 @@ async def export_messages(client: TelegramClient, args: argparse.Namespace) -> N
     state_path = Path(args.state)
     state = load_state(state_path)
 
-    entity = await client.get_input_entity(PeerChannel(1467914348))
+    entity = await resolve_entity(client, args.channel)
     logging.info("Resolved entity: %s", getattr(entity, "title", None) or getattr(entity, "username", None))
 
     batch: list[Any] = []

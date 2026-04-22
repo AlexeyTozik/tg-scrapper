@@ -14,3 +14,7 @@ build/
 message_embeddings.jsonl
 models
 .env
+
+*.session
+messages.state.json
+messages.jsonl
