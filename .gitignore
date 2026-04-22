@@ -9,3 +9,8 @@ build/
 .vscode
 .kilocode
 .idea
+.cache/
+*.state.json
+message_embeddings.jsonl
+models
+.env
