@@ -9,3 +9,7 @@ build/
 .vscode
 .kilocode
 .idea
+
+*.session
+messages.state.json
+messages.jsonl
