@@ -23,14 +23,10 @@ def get_first_env(*names: str) -> str | None:
     return None
 
 
-def ensure_json_object(raw: object, context: str) -> JsonObject:
+def _ensure_json_object(raw: object, context: str) -> JsonObject:
     if not isinstance(raw, dict):
         raise ValueError(f"{context} is not a JSON object")
     return cast(JsonObject, raw)
-
-
-def read_jsonl(path: Path) -> list[JsonObject]:
-    return [row for _, row in iter_jsonl(path)]
 
 
 def iter_jsonl(path: Path, skip_lines: int = 0) -> Iterator[tuple[int, JsonObject]]:
@@ -39,30 +35,22 @@ def iter_jsonl(path: Path, skip_lines: int = 0) -> Iterator[tuple[int, JsonObjec
             if line_number <= skip_lines:
                 continue
 
-            yield line_number, ensure_json_object(json.loads(line), f"Line {line_number} in {path}")
-
-
-def _write_jsonl(path: Path, rows: Iterable[Mapping[str, object]], mode: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    with path.open(mode, encoding="utf-8") as file:
-        for row in rows:
-            file.write(json.dumps(dict(row), ensure_ascii=False) + "\n")
-
-
-def write_jsonl(path: Path, rows: Iterable[Mapping[str, object]]) -> None:
-    _write_jsonl(path, rows, "w")
+            yield line_number, _ensure_json_object(json.loads(line), f"Line {line_number} in {path}")
 
 
 def append_jsonl(path: Path, rows: Iterable[Mapping[str, object]]) -> None:
-    _write_jsonl(path, rows, "a")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("a", encoding="utf-8") as file:
+        for row in rows:
+            file.write(json.dumps(dict(row), ensure_ascii=False) + "\n")
 
 
 def load_json_dict(path: Path) -> JsonDict | None:
     if not path.exists():
         return None
 
-    return cast(JsonDict, ensure_json_object(json.loads(path.read_text(encoding="utf-8")), f"{path}"))
+    return cast(JsonDict, _ensure_json_object(json.loads(path.read_text(encoding="utf-8")), f"{path}"))
 
 
 def save_json(path: Path, value: object, *, indent: int | None = None) -> None:
@@ -73,13 +61,6 @@ def save_json(path: Path, value: object, *, indent: int | None = None) -> None:
 def get_optional_str(row: Mapping[str, object], key: str) -> str | None:
     value = row.get(key)
     return value if isinstance(value, str) else None
-
-
-def get_required_str(row: Mapping[str, object], key: str) -> str:
-    value = get_optional_str(row, key)
-    if value is None or not value:
-        raise ValueError(f'Field "{key}" is missing or not a non-empty string')
-    return value
 
 
 def get_optional_int(row: Mapping[str, object], key: str) -> int | None:
