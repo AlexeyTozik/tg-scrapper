@@ -15,6 +15,7 @@ from app_support import (
     load_json_dict,
     save_json,
 )
+from message_filter import get_filtered_message_text
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="0 = process all messages; otherwise stop after this many embedded messages",
     )
+    parser.add_argument(
+        "--min-chars",
+        type=int,
+        default=20,
+        help="Keep short messages only when they match reply/technical heuristics",
+    )
     return parser.parse_args()
 
 
@@ -71,22 +78,12 @@ def load_state(path: Path) -> JsonObject:
     return {
         "processed_lines": 0,
         "saved_embeddings": 0,
-        "skipped_empty": 0,
+        "skipped_filtered": 0,
     }
 
 
 def save_state(path: Path, state: JsonObject) -> None:
     save_json(path, state, indent=2)
-
-
-def extract_message_text(row: JsonObject) -> str | None:
-    for key in ("text", "raw_text"):
-        value = get_optional_str(row, key)
-        if value is not None:
-            cleaned = value.strip()
-            if cleaned:
-                return cleaned
-    return None
 
 
 def build_output_rows(
@@ -103,8 +100,13 @@ def build_output_rows(
             {
                 "id": get_required_int(message, "id"),
                 "chat_id": get_optional_int(message, "chat_id"),
+                "channel_name": get_optional_str(message, "channel_name"),
                 "sender_id": get_optional_int(message, "sender_id"),
                 "date": get_optional_str(message, "date"),
+                "reply_to_msg_id": get_optional_int(message, "reply_to_msg_id"),
+                "action_type": get_optional_str(message, "action_type"),
+                "media_type": get_optional_str(message, "media_type"),
+                "has_media": bool(message.get("has_media")),
                 "text": text,
                 "embedding_model": model_name,
                 "embedding_dim": len(vector),
@@ -160,7 +162,9 @@ def export_embeddings(args: argparse.Namespace) -> None:
 
     processed_lines = get_optional_int(state, "processed_lines") or 0
     saved_embeddings = get_optional_int(state, "saved_embeddings") or 0
-    skipped_empty = get_optional_int(state, "skipped_empty") or 0
+    skipped_filtered = get_optional_int(state, "skipped_filtered")
+    if skipped_filtered is None:
+        skipped_filtered = get_optional_int(state, "skipped_empty") or 0
 
     logging.info("Loading model: %s", args.model)
     model = SentenceTransformer(
@@ -178,11 +182,11 @@ def export_embeddings(args: argparse.Namespace) -> None:
             logging.info("Reached max-messages=%s", args.max_messages)
             return
 
-        text = extract_message_text(row)
+        text = get_filtered_message_text(row, min_chars=args.min_chars)
 
         if text is None:
             processed_lines = line_number
-            skipped_empty += 1
+            skipped_filtered += 1
             continue
 
         batch.append((line_number, row, text))
@@ -200,16 +204,16 @@ def export_embeddings(args: argparse.Namespace) -> None:
         state = {
             "processed_lines": processed_lines,
             "saved_embeddings": saved_embeddings,
-            "skipped_empty": skipped_empty,
+            "skipped_filtered": skipped_filtered,
         }
         save_state(state_path, state)
 
         logging.info(
-            "Saved batch: %s embeddings | processed lines: %s | total saved: %s | skipped empty: %s",
+            "Saved batch: %s embeddings | processed lines: %s | total saved: %s | skipped filtered: %s",
             len(output_rows),
             processed_lines,
             saved_embeddings,
-            skipped_empty,
+            skipped_filtered,
         )
 
         batch.clear()
@@ -235,19 +239,19 @@ def export_embeddings(args: argparse.Namespace) -> None:
         state = {
             "processed_lines": processed_lines,
             "saved_embeddings": saved_embeddings,
-            "skipped_empty": skipped_empty,
+            "skipped_filtered": skipped_filtered,
         }
         save_state(state_path, state)
 
         logging.info(
-            "Saved final batch: %s embeddings | processed lines: %s | total saved: %s | skipped empty: %s",
+            "Saved final batch: %s embeddings | processed lines: %s | total saved: %s | skipped filtered: %s",
             len(output_rows),
             processed_lines,
             saved_embeddings,
-            skipped_empty,
+            skipped_filtered,
         )
 
-    logging.info("Done. Total saved embeddings: %s | skipped empty messages: %s", saved_embeddings, skipped_empty)
+    logging.info("Done. Total saved embeddings: %s | skipped filtered messages: %s", saved_embeddings, skipped_filtered)
 
 
 def main() -> None:
