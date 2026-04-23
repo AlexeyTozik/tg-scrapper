@@ -21,3 +21,7 @@ messages.state.json
 messages.jsonl
 *_summary.jsonl
 *.jsonl
+
+chroma_db/
+answers/
+exports/
