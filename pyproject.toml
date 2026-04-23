@@ -12,6 +12,7 @@ dependencies = [
     "torch",
     "torchvision",
     "torchaudio",
+    "chromadb>=0.5.0",
 ]
 
 [tool.uv.sources]
