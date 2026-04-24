@@ -2,8 +2,6 @@ import argparse
 import unittest
 from collections.abc import AsyncIterator
 
-from telethon import errors
-
 from main import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_BATCH_SLEEP,
@@ -13,6 +11,7 @@ from main import (
     iter_history_messages,
     resolve_runtime_options,
 )
+from telethon import errors
 
 
 def make_args(**overrides: object) -> argparse.Namespace:

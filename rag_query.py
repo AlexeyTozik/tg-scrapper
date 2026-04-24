@@ -103,6 +103,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip multi-query expansion and use the raw question only",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print final hits (text, distance, channel, date) before generating the answer",
+    )
     return parser.parse_args()
 
 
@@ -335,6 +340,17 @@ def main() -> None:
 
     final_hits = mmr_rerank(merged, args.final_k, args.mmr_lambda)
     logging.info("Final hits after MMR: %s", len(final_hits))
+
+    if args.debug:
+        print("\n=== DEBUG: final hits ===")
+        for i, hit in enumerate(final_hits, start=1):
+            meta = hit.metadata
+            channel = meta.get("channel_name", "?")
+            msg_id = meta.get("id", "?")
+            date = meta.get("date", "?")
+            print(f"\n[#{i}] distance={hit.distance:.4f} channel={channel} msg_id={msg_id} date={date}")
+            print(hit.document[:500])
+        print("\n=== END DEBUG ===\n")
 
     if not final_hits:
         answer = "Не нашёл релевантных сообщений под фильтры запроса."

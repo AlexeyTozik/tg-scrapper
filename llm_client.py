@@ -1,6 +1,10 @@
 import logging
 import time
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from httpx import Response
 
 from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 
@@ -36,7 +40,7 @@ def is_retryable_error(error: Exception) -> bool:
     if isinstance(error, APIStatusError):
         return error.status_code in {408, 409, 429} or error.status_code >= 500
 
-    return False
+    return isinstance(error, RuntimeError) and "empty response" in str(error).lower()
 
 
 def call_with_retries(
@@ -78,7 +82,18 @@ def build_openrouter_client(model: str, api_key: str, base_url: str) -> LLMCallF
         response = client.responses.create(model=model, input=prompt)
         text = response.output_text
         if not text or not text.strip():
-            raise RuntimeError("LLM returned an empty response")
+            logging.warning(
+                "LLM returned empty response | model=%s | status=%s | id=%s | output=%s",
+                model,
+                response.status,
+                response.id,
+                [(o.type, getattr(o, "text", "")[:200] if hasattr(o, "text") else "") for o in (response.output or [])],
+            )
+            raise APIStatusError(
+                message="LLM returned an empty response",
+                response=getattr(response, "_response", cast("Response", None)),
+                body={"error": {"message": "Empty output_text", "code": "empty_response"}},
+            )
         return text.strip()
 
     return call
