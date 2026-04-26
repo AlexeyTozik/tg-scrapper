@@ -116,7 +116,7 @@ class BuildOpenRouterClientTests(unittest.TestCase):
             api_key="k",
             base_url="https://example.com",
         )
-        with self.assertRaisesRegex(RuntimeError, "empty response"):
+        with self.assertRaisesRegex(APIStatusError, "empty response"):
             call("prompt")
 
 
