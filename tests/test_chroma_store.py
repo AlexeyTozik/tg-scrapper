@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from chroma_store import (
+from tg_scrapper.chroma_store import (
     MESSAGES_COLLECTION,
     StoreItem,
     get_messages_collection,

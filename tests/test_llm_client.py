@@ -7,8 +7,7 @@ from unittest.mock import Mock, patch
 import httpx
 from openai import APIStatusError
 
-import app_support
-import llm_client
+from tg_scrapper import app_support, llm_client
 
 
 class GetApiKeyTests(unittest.TestCase):
@@ -28,17 +27,16 @@ class GetApiKeyTests(unittest.TestCase):
             llm_client.get_api_key()
 
 
-class LoadRepoDotenvTests(unittest.TestCase):
+class LoadWorkingDirDotenvTests(unittest.TestCase):
     def test_overrides_existing_shell_env(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_path = Path(raw_dir)
             (temp_path / ".env").write_text("OPENROUTER_API_KEY=fresh-key\n", encoding="utf-8")
 
             with (
-                patch.object(app_support, "REPO_ROOT", temp_path),
                 patch.dict(os.environ, {"OPENROUTER_API_KEY": "stale-key"}, clear=False),
             ):
-                app_support.load_repo_dotenv()
+                app_support.load_working_dir_dotenv(directory=temp_path)
                 self.assertEqual(os.environ["OPENROUTER_API_KEY"], "fresh-key")
 
 
@@ -92,7 +90,7 @@ class CallWithRetriesTests(unittest.TestCase):
 
 
 class BuildOpenRouterClientTests(unittest.TestCase):
-    @patch("llm_client.OpenAI")
+    @patch("tg_scrapper.llm_client.OpenAI")
     def test_passes_base_url_and_strips_response(self, openai_cls: Mock) -> None:
         client = openai_cls.return_value
         client.responses.create.return_value.output_text = " openrouter answer "
@@ -108,7 +106,7 @@ class BuildOpenRouterClientTests(unittest.TestCase):
         openai_cls.assert_called_once_with(api_key="openrouter-key", base_url="https://openrouter.ai/api/v1")
         client.responses.create.assert_called_once_with(model="openai/gpt-oss-120b:free", input="prompt text")
 
-    @patch("llm_client.OpenAI")
+    @patch("tg_scrapper.llm_client.OpenAI")
     def test_raises_on_empty_response(self, openai_cls: Mock) -> None:
         client = openai_cls.return_value
         client.responses.create.return_value.output_text = "   "

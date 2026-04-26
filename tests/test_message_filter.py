@@ -2,7 +2,7 @@
 
 import unittest
 
-from message_filter import (
+from tg_scrapper.message_filter import (
     extract_message_text,
     get_filtered_message_text,
     has_technical_signal,

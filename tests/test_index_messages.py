@@ -2,7 +2,7 @@
 
 import unittest
 
-from index_messages import build_item, build_metadata, extract_date
+from tg_scrapper.index_messages import build_item, build_metadata, extract_date
 
 
 class ExtractDateTests(unittest.TestCase):

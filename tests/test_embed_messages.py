@@ -1,6 +1,6 @@
 import unittest
 
-from embed_messages import build_output_rows, get_target_batch_size
+from tg_scrapper.embed_messages import build_output_rows, get_target_batch_size
 
 
 class BuildOutputRowsTests(unittest.TestCase):

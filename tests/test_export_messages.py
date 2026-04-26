@@ -1,20 +1,26 @@
 import argparse
+import json
 import unittest
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from types import SimpleNamespace
 
-from main import (
+from telethon import errors
+
+from tg_scrapper.export_messages import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_BATCH_SLEEP,
     DEFAULT_HISTORY_WAIT,
+    ExportConfig,
     ExportRuntimeOptions,
     build_iter_messages_kwargs,
     iter_history_messages,
     resolve_runtime_options,
 )
-from telethon import errors
+from tg_scrapper.telegram_export import serialize_message
 
 
-def make_args(**overrides: object) -> argparse.Namespace:
+def make_config(**overrides: object) -> ExportConfig:
     values: dict[str, object] = {
         "batch_size": DEFAULT_BATCH_SIZE,
         "history_wait": DEFAULT_HISTORY_WAIT,
@@ -26,12 +32,12 @@ def make_args(**overrides: object) -> argparse.Namespace:
         "state": "st",
     }
     values.update(overrides)
-    return argparse.Namespace(**values)
+    return ExportConfig.from_args(argparse.Namespace(**values))
 
 
 class ResolveRuntimeOptionsTests(unittest.TestCase):
     def test_default_runtime_is_fast_and_takeout_enabled(self) -> None:
-        runtime = resolve_runtime_options(make_args())
+        runtime = resolve_runtime_options(make_config())
         self.assertEqual(
             runtime,
             ExportRuntimeOptions(
@@ -44,7 +50,7 @@ class ResolveRuntimeOptionsTests(unittest.TestCase):
 
     def test_explicit_overrides_win_over_defaults(self) -> None:
         runtime = resolve_runtime_options(
-            make_args(
+            make_config(
                 batch_size=321,
                 history_wait=0.75,
                 batch_sleep=0.25,
@@ -76,6 +82,42 @@ class BuildIterMessagesKwargsTests(unittest.TestCase):
         )
 
 
+class SerializeMessageTests(unittest.TestCase):
+    def test_serializes_action_payload_with_bytes(self) -> None:
+        class FakeAction:
+            def to_dict(self) -> dict[str, object]:
+                return {
+                    "_": "MessageActionPaymentSentMe",
+                    "payload": b"\x00\xff",
+                    "nested": {"when": datetime(2026, 1, 1, tzinfo=UTC)},
+                }
+
+        message = SimpleNamespace(
+            id=1,
+            date=datetime(2026, 1, 2, tzinfo=UTC),
+            message=None,
+            raw_text=None,
+            sender_id=10,
+            chat_id=-100,
+            views=None,
+            forwards=None,
+            replies=None,
+            reply_to=None,
+            post_author=None,
+            grouped_id=None,
+            media=None,
+            action=FakeAction(),
+            buttons=None,
+        )
+
+        row = serialize_message(message)
+
+        json.dumps(row)
+        self.assertEqual(row["action_type"], "FakeAction")
+        self.assertEqual(row["action"]["payload"], "00ff")
+        self.assertEqual(row["action"]["nested"]["when"], "2026-01-01T00:00:00+00:00")
+
+
 class FakeTakeoutContext:
     def __init__(self, messages: list[int]) -> None:
         self.messages = messages
@@ -96,6 +138,14 @@ class FakeTakeoutContext:
 class DelayedTakeoutContext:
     async def __aenter__(self) -> "DelayedTakeoutContext":
         raise errors.TakeoutInitDelayError(request=None, capture=7)
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        return False
+
+
+class PendingTakeoutContext:
+    async def __aenter__(self) -> "PendingTakeoutContext":
+        raise ValueError("Can't send a takeout request while another takeout is pending")
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
         return False
@@ -182,6 +232,26 @@ class IterHistoryMessagesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.takeout_calls, [{"channels": True, "megagroups": True}])
         self.assertEqual(client.calls[0]["limit"], 50)
         self.assertEqual(client.calls[0]["wait_time"], 0.25)
+
+    async def test_falls_back_to_normal_client_when_takeout_is_pending(self) -> None:
+        client = FakeClient(messages=[9, 10], takeout_context=PendingTakeoutContext())
+        runtime = ExportRuntimeOptions(batch_size=1, history_wait=0.1, batch_sleep=0.0, use_takeout=True)
+
+        result = [
+            message
+            async for message in iter_history_messages(
+                client,
+                "entity",
+                limit_left=25,
+                min_id=88,
+                runtime=runtime,
+            )
+        ]
+
+        self.assertEqual(result, [9, 10])
+        self.assertEqual(client.takeout_calls, [{"channels": True, "megagroups": True}])
+        self.assertEqual(client.calls[0]["limit"], 25)
+        self.assertEqual(client.calls[0]["min_id"], 88)
 
 
 if __name__ == "__main__":
