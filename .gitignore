@@ -6,6 +6,7 @@ dist/
 build/
 .mypy_cache/
 .ruff_cache/
+.pytest_cache/
 .vscode
 .kilocode
 .idea
@@ -21,6 +22,8 @@ messages.state.json
 messages.jsonl
 *_summary.jsonl
 *.jsonl
+!tests/fixtures/
+!tests/fixtures/*.jsonl
 
 chroma_db/
 answers/
