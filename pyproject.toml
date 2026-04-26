@@ -1,9 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "tg-scrapper"
 version = "0.1.0"
-description = "Add your description here"
+description = "Telegram export, embeddings, indexing, and RAG query CLI."
 readme = "README.md"
+license = "LicenseRef-Proprietary"
+authors = [
+    { name = "Alexey Tozik" },
+]
 requires-python = ">=3.13,<3.14"
+keywords = ["telegram", "rag", "embeddings", "chromadb", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
 dependencies = [
     "telethon==1.43.1",
     "sentence-transformers>=5.0.0",
@@ -14,6 +33,23 @@ dependencies = [
     "torchaudio",
     "chromadb>=0.5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AlexeyTozik/tg-scrapper"
+Repository = "https://github.com/AlexeyTozik/tg-scrapper"
+Issues = "https://github.com/AlexeyTozik/tg-scrapper/issues"
+
+[project.scripts]
+tg-scrapper = "tg_scrapper.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tg_scrapper = ["prompts/*.txt"]
 
 [tool.uv.sources]
 torch = [
@@ -51,9 +87,11 @@ python_version = "3.13"
 strict = true
 ignore_missing_imports = true
 files = ["."]
+exclude = ["^build/", "^dist/", "^src/tg_scrapper\\.egg-info/"]
 
 [dependency-groups]
 dev = [
+    "build>=1.3.0",
     "mypy>=1.20.2",
     "pre-commit>=4.6.0",
     "ruff>=0.15.11",

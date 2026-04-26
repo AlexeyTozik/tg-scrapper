@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 
-from app_support import get_first_env
+from .app_support import get_first_env
 
 LLMCallFn = Callable[[str], str]
 

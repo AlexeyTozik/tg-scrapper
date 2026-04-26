@@ -1,7 +1,7 @@
 import argparse
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +10,9 @@ from typing import Any
 from telethon import TelegramClient, errors
 from telethon.tl.types import PeerChannel
 
-from app_support import append_jsonl, get_first_env, load_json_dict, load_repo_dotenv, save_json
+from .app_support import append_jsonl, get_first_env, load_repo_dotenv
+from .checkpoints import load_checkpoint, save_checkpoint
+from .telegram_export import serialize_message
 
 DEFAULT_BATCH_SIZE = 1000
 DEFAULT_HISTORY_WAIT = 0.0
@@ -25,7 +27,32 @@ class ExportRuntimeOptions:
     use_takeout: bool
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass(frozen=True)
+class ExportConfig:
+    channel: str
+    session: str
+    out: Path
+    state: Path
+    batch_size: int
+    history_wait: float
+    batch_sleep: float
+    max_messages: int
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "ExportConfig":
+        return cls(
+            channel=args.channel,
+            session=args.session,
+            out=Path(args.out),
+            state=Path(args.state),
+            batch_size=args.batch_size,
+            history_wait=args.history_wait,
+            batch_sleep=args.batch_sleep,
+            max_messages=args.max_messages,
+        )
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Batch export messages from a Telegram channel using Telethon.")
     parser.add_argument("--channel", required=True, help="Username, invite link or numeric id")
     parser.add_argument("--session", default="tg_session", help="Telethon session name/path")
@@ -50,14 +77,14 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="0 = export all; otherwise stop after this many messages",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def resolve_runtime_options(args: argparse.Namespace) -> ExportRuntimeOptions:
+def resolve_runtime_options(config: ExportConfig) -> ExportRuntimeOptions:
     return ExportRuntimeOptions(
-        batch_size=args.batch_size,
-        history_wait=args.history_wait,
-        batch_sleep=args.batch_sleep,
+        batch_size=config.batch_size,
+        history_wait=config.history_wait,
+        batch_sleep=config.batch_sleep,
         use_takeout=True,
     )
 
@@ -104,48 +131,22 @@ async def iter_history_messages(
                 "Takeout export is not ready yet (wait %s seconds). Falling back to the normal client.",
                 exc.seconds,
             )
+        except ValueError as exc:
+            if "takeout" not in str(exc).lower():
+                raise
+            logging.warning("Takeout export is already pending. Falling back to the normal client.")
 
     async for msg in client.iter_messages(**iter_kwargs):
         yield msg
 
 
-def load_state(path: Path) -> dict[str, Any]:
-    state = load_json_dict(path)
-    if state is not None:
-        return state
-    return {
-        "last_id": 0,
-        "saved_messages": 0,
-        "updated_at": None,
-    }
+def load_export_state(path: Path) -> dict[str, Any]:
+    return load_checkpoint(path, {"last_id": 0, "saved_messages": 0, "updated_at": None})
 
 
-def save_state(path: Path, state: dict[str, Any]) -> None:
+def save_export_state(path: Path, state: dict[str, Any]) -> None:
     state["updated_at"] = datetime.now(UTC).isoformat()
-    save_json(path, state, indent=2)
-
-
-def serialize_message(msg: Any, channel_name: str | None = None) -> dict[str, Any]:
-    return {
-        "id": msg.id,
-        "date": msg.date.isoformat() if msg.date else None,
-        "text": msg.message,
-        "raw_text": msg.raw_text,
-        "sender_id": msg.sender_id,
-        "chat_id": msg.chat_id,
-        "channel_name": channel_name,
-        "views": getattr(msg, "views", None),
-        "forwards": getattr(msg, "forwards", None),
-        "replies": getattr(getattr(msg, "replies", None), "replies", None),
-        "reply_to_msg_id": getattr(getattr(msg, "reply_to", None), "reply_to_msg_id", None),
-        "post_author": getattr(msg, "post_author", None),
-        "grouped_id": getattr(msg, "grouped_id", None),
-        "has_media": msg.media is not None,
-        "action_type": type(msg.action).__name__ if getattr(msg, "action", None) else None,
-        "action": msg.action.to_dict() if getattr(msg, "action", None) else None,
-        "media_type": type(msg.media).__name__ if getattr(msg, "media", None) else None,
-        "buttons": bool(getattr(msg, "buttons", None)),
-    }
+    save_checkpoint(path, state)
 
 
 def parse_channel_ref(channel: str) -> str | PeerChannel:
@@ -186,7 +187,7 @@ async def flush_batch(
 
     state["last_id"] = batch[-1].id
     state["saved_messages"] += len(rows)
-    save_state(state_path, state)
+    save_export_state(state_path, state)
 
     logging.info(
         "Saved batch: %s messages | ids %s..%s | total saved: %s",
@@ -197,13 +198,13 @@ async def flush_batch(
     )
 
 
-async def export_messages(client: TelegramClient, args: argparse.Namespace) -> None:
-    runtime = resolve_runtime_options(args)
-    out_path = Path(args.out)
-    state_path = Path(args.state)
-    state = load_state(state_path)
+async def export_messages(client: TelegramClient, config: ExportConfig) -> None:
+    runtime = resolve_runtime_options(config)
+    out_path = config.out
+    state_path = config.state
+    state = load_export_state(state_path)
 
-    entity = await resolve_entity(client, args.channel)
+    entity = await resolve_entity(client, config.channel)
     full_entity = await client.get_entity(entity)
     channel_name = getattr(full_entity, "title", None) or getattr(full_entity, "username", None)
     logging.info("Resolved entity: %s", channel_name)
@@ -216,7 +217,7 @@ async def export_messages(client: TelegramClient, args: argparse.Namespace) -> N
     )
 
     batch: list[Any] = []
-    limit_left = args.max_messages if args.max_messages > 0 else None
+    limit_left = config.max_messages if config.max_messages > 0 else None
 
     while True:
         try:
@@ -236,10 +237,10 @@ async def export_messages(client: TelegramClient, args: argparse.Namespace) -> N
                     await flush_batch(batch, out_path, state_path, state, channel_name)
                     batch.clear()
 
-                    if args.max_messages > 0:
-                        limit_left = max(0, args.max_messages - state["saved_messages"])
+                    if config.max_messages > 0:
+                        limit_left = max(0, config.max_messages - state["saved_messages"])
                         if limit_left == 0:
-                            logging.info("Reached max-messages=%s", args.max_messages)
+                            logging.info("Reached max-messages=%s", config.max_messages)
                             return
 
                     if runtime.batch_sleep > 0:
@@ -265,8 +266,7 @@ async def export_messages(client: TelegramClient, args: argparse.Namespace) -> N
     logging.info("Done. Total saved: %s", state["saved_messages"])
 
 
-async def main() -> None:
-    args = parse_args()
+async def run(config: ExportConfig) -> None:
     load_repo_dotenv()
 
     api_id = get_first_env("TG_API_ID")
@@ -280,13 +280,17 @@ async def main() -> None:
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    client = TelegramClient(args.session, int(api_id), api_hash)
+    client = TelegramClient(config.session, int(api_id), api_hash)
 
     async with client:
         # first run will ask for phone/code/2FA if needed
         await client.start()
-        await export_messages(client, args)
+        await export_messages(client, config)
+
+
+def cli_main(argv: Sequence[str] | None = None) -> None:
+    asyncio.run(run(ExportConfig.from_args(parse_args(argv))))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cli_main()

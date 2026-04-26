@@ -3,7 +3,7 @@
 import re
 from collections.abc import Mapping
 
-from app_support import get_optional_int, get_optional_str
+from .app_support import get_optional_int, get_optional_str
 
 ALNUM_RE = re.compile(r"\w", flags=re.UNICODE)
 VERSION_RE = re.compile(r"(?i)\bv?\d+(?:[._-]\d+){1,}\b")

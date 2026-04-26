@@ -1,24 +1,54 @@
 import argparse
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from sentence_transformers import SentenceTransformer
 
-from app_support import (
+from .app_support import (
     JsonObject,
     append_jsonl,
     get_optional_int,
     get_optional_str,
     get_required_int,
     iter_jsonl,
-    load_json_dict,
-    save_json,
 )
-from message_filter import get_filtered_message_text
+from .checkpoints import load_checkpoint, save_checkpoint
+from .message_filter import get_filtered_message_text
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass(frozen=True)
+class EmbedConfig:
+    input: Path
+    output: Path
+    state: Path
+    model: str
+    cache_dir: Path
+    batch_size: int
+    device: str
+    offline: bool
+    max_messages: int
+    min_chars: int
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "EmbedConfig":
+        return cls(
+            input=Path(args.input),
+            output=Path(args.output),
+            state=Path(args.state),
+            model=args.model,
+            cache_dir=Path(args.cache_dir),
+            batch_size=args.batch_size,
+            device=args.device,
+            offline=args.offline,
+            max_messages=args.max_messages,
+            min_chars=args.min_chars,
+        )
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Read Telegram messages from JSONL and compute embeddings with intfloat/multilingual-e5-small."
     )
@@ -67,23 +97,18 @@ def parse_args() -> argparse.Namespace:
         default=20,
         help="Keep short messages only when they match reply/technical heuristics",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def load_state(path: Path) -> JsonObject:
-    state = load_json_dict(path)
-    if state is not None:
-        return cast(JsonObject, state)
-
-    return {
-        "processed_lines": 0,
-        "saved_embeddings": 0,
-        "skipped_filtered": 0,
-    }
+def load_embed_state(path: Path) -> JsonObject:
+    return cast(
+        JsonObject,
+        load_checkpoint(path, {"processed_lines": 0, "saved_embeddings": 0, "skipped_filtered": 0}),
+    )
 
 
-def save_state(path: Path, state: JsonObject) -> None:
-    save_json(path, state, indent=2)
+def save_embed_state(path: Path, state: JsonObject) -> None:
+    save_checkpoint(path, state)
 
 
 def build_output_rows(
@@ -147,18 +172,18 @@ def get_target_batch_size(batch_size: int, max_messages: int, saved_embeddings: 
     return min(batch_size, remaining)
 
 
-def export_embeddings(args: argparse.Namespace) -> None:
-    input_path = Path(args.input)
-    output_path = Path(args.output)
-    state_path = Path(args.state)
-    cache_dir = Path(args.cache_dir)
+def export_embeddings(config: EmbedConfig) -> None:
+    input_path = config.input
+    output_path = config.output
+    state_path = config.state
+    cache_dir = config.cache_dir
 
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    state = load_state(state_path)
+    state = load_embed_state(state_path)
 
     processed_lines = get_optional_int(state, "processed_lines") or 0
     saved_embeddings = get_optional_int(state, "saved_embeddings") or 0
@@ -166,23 +191,23 @@ def export_embeddings(args: argparse.Namespace) -> None:
     if skipped_filtered is None:
         skipped_filtered = get_optional_int(state, "skipped_empty") or 0
 
-    logging.info("Loading model: %s", args.model)
+    logging.info("Loading model: %s", config.model)
     model = SentenceTransformer(
-        args.model,
+        config.model,
         cache_folder=str(cache_dir),
-        local_files_only=args.offline,
-        device=args.device,
+        local_files_only=config.offline,
+        device=config.device,
     )
 
     batch: list[tuple[int, JsonObject, str]] = []
 
     for line_number, row in iter_jsonl(input_path, processed_lines):
-        target_batch_size = get_target_batch_size(args.batch_size, args.max_messages, saved_embeddings)
+        target_batch_size = get_target_batch_size(config.batch_size, config.max_messages, saved_embeddings)
         if target_batch_size == 0:
-            logging.info("Reached max-messages=%s", args.max_messages)
+            logging.info("Reached max-messages=%s", config.max_messages)
             return
 
-        text = get_filtered_message_text(row, min_chars=args.min_chars)
+        text = get_filtered_message_text(row, min_chars=config.min_chars)
 
         if text is None:
             processed_lines = line_number
@@ -195,7 +220,7 @@ def export_embeddings(args: argparse.Namespace) -> None:
             continue
 
         vectors = embed_batch(model, batch, target_batch_size)
-        output_rows = build_output_rows(batch, vectors, args.model)
+        output_rows = build_output_rows(batch, vectors, config.model)
         append_jsonl(output_path, output_rows)
 
         processed_lines = batch[-1][0]
@@ -206,7 +231,7 @@ def export_embeddings(args: argparse.Namespace) -> None:
             "saved_embeddings": saved_embeddings,
             "skipped_filtered": skipped_filtered,
         }
-        save_state(state_path, state)
+        save_embed_state(state_path, state)
 
         logging.info(
             "Saved batch: %s embeddings | processed lines: %s | total saved: %s | skipped filtered: %s",
@@ -218,19 +243,19 @@ def export_embeddings(args: argparse.Namespace) -> None:
 
         batch.clear()
 
-        if args.max_messages > 0 and saved_embeddings >= args.max_messages:
-            logging.info("Reached max-messages=%s", args.max_messages)
+        if config.max_messages > 0 and saved_embeddings >= config.max_messages:
+            logging.info("Reached max-messages=%s", config.max_messages)
             return
 
     if batch:
-        target_batch_size = get_target_batch_size(args.batch_size, args.max_messages, saved_embeddings)
+        target_batch_size = get_target_batch_size(config.batch_size, config.max_messages, saved_embeddings)
         if target_batch_size == 0:
-            logging.info("Reached max-messages=%s", args.max_messages)
+            logging.info("Reached max-messages=%s", config.max_messages)
             return
 
         final_batch = batch[:target_batch_size]
         vectors = embed_batch(model, final_batch, target_batch_size)
-        output_rows = build_output_rows(final_batch, vectors, args.model)
+        output_rows = build_output_rows(final_batch, vectors, config.model)
         append_jsonl(output_path, output_rows)
 
         processed_lines = final_batch[-1][0]
@@ -241,7 +266,7 @@ def export_embeddings(args: argparse.Namespace) -> None:
             "saved_embeddings": saved_embeddings,
             "skipped_filtered": skipped_filtered,
         }
-        save_state(state_path, state)
+        save_embed_state(state_path, state)
 
         logging.info(
             "Saved final batch: %s embeddings | processed lines: %s | total saved: %s | skipped filtered: %s",
@@ -254,16 +279,16 @@ def export_embeddings(args: argparse.Namespace) -> None:
     logging.info("Done. Total saved embeddings: %s | skipped filtered messages: %s", saved_embeddings, skipped_filtered)
 
 
-def main() -> None:
-    args = parse_args()
+def cli_main(argv: Sequence[str] | None = None) -> None:
+    config = EmbedConfig.from_args(parse_args(argv))
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    export_embeddings(args)
+    export_embeddings(config)
 
 
 if __name__ == "__main__":
-    main()
+    cli_main()

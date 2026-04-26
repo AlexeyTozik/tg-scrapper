@@ -3,31 +3,55 @@ import glob as glob_module
 import logging
 import re
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from app_support import (
+from .app_support import (
     JsonObject,
     get_optional_int,
     get_optional_str,
     get_required_int,
     iter_jsonl,
-    load_json_dict,
-    save_json,
 )
-from chroma_store import (
+from .checkpoints import load_checkpoint, save_checkpoint
+from .chroma_store import (
     MESSAGES_COLLECTION,
     MessageMetadata,
     StoreItem,
     get_messages_collection,
     upsert_items,
 )
-from message_filter import extract_message_text, get_filtered_message_text
+from .message_filter import extract_message_text, get_filtered_message_text
 
 LINK_RE = re.compile(r"https?://", flags=re.IGNORECASE)
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass(frozen=True)
+class IndexConfig:
+    input: str
+    chroma_path: Path
+    collection: str
+    state: Path
+    batch_size: int
+    min_chars: int
+    max_items: int
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "IndexConfig":
+        return cls(
+            input=args.input,
+            chroma_path=Path(args.chroma_path),
+            collection=args.collection,
+            state=Path(args.state),
+            batch_size=args.batch_size,
+            min_chars=args.min_chars,
+            max_items=args.max_items,
+        )
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Stream message_embeddings.jsonl files into the ChromaDB "
@@ -72,7 +96,7 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="0 = all; otherwise stop after this many indexed messages across all inputs",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def expand_inputs(pattern: str) -> list[Path]:
@@ -83,10 +107,8 @@ def expand_inputs(pattern: str) -> list[Path]:
     return [path for path in matches if path.is_file()]
 
 
-def load_state(path: Path) -> dict[str, int]:
-    raw = load_json_dict(path)
-    if raw is None:
-        return {}
+def load_index_state(path: Path) -> dict[str, int]:
+    raw = load_checkpoint(path, {"processed_files": {}})
     processed = raw.get("processed_files")
     if not isinstance(processed, dict):
         return {}
@@ -97,8 +119,8 @@ def load_state(path: Path) -> dict[str, int]:
     return result
 
 
-def save_state(path: Path, processed_files: dict[str, int]) -> None:
-    save_json(path, {"processed_files": processed_files}, indent=2)
+def save_index_state(path: Path, processed_files: dict[str, int]) -> None:
+    save_checkpoint(path, {"processed_files": processed_files})
 
 
 def extract_date(row: JsonObject) -> str | None:
@@ -220,23 +242,22 @@ def index_file(
     return last_line, indexed_here, skipped_here
 
 
-def main() -> None:
-    args = parse_args()
+def run(config: IndexConfig) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
-    inputs = expand_inputs(args.input)
+    inputs = expand_inputs(config.input)
     if not inputs:
-        raise FileNotFoundError(f"No input files match: {args.input}")
+        raise FileNotFoundError(f"No input files match: {config.input}")
 
     logging.info("Inputs: %s", [str(p) for p in inputs])
 
-    state_path = Path(args.state)
-    processed_files = load_state(state_path)
+    state_path = config.state
+    processed_files = load_index_state(state_path)
 
-    collection = get_messages_collection(Path(args.chroma_path), name=args.collection)
-    logging.info("Collection '%s' starting count: %s", args.collection, collection.count())
+    collection = get_messages_collection(config.chroma_path, name=config.collection)
+    logging.info("Collection '%s' starting count: %s", config.collection, collection.count())
 
-    budget: int | None = args.max_items if args.max_items > 0 else None
+    budget: int | None = config.max_items if config.max_items > 0 else None
     indexed_total = 0
     skipped_total = 0
 
@@ -249,8 +270,8 @@ def main() -> None:
             path=path,
             collection=collection,
             start_line=start_line,
-            batch_size=args.batch_size,
-            min_chars=args.min_chars,
+            batch_size=config.batch_size,
+            min_chars=config.min_chars,
             indexed_total=indexed_total,
             budget=budget,
         )
@@ -258,7 +279,7 @@ def main() -> None:
         indexed_total += indexed_here
         skipped_total += skipped_here
         processed_files[key] = last_line
-        save_state(state_path, processed_files)
+        save_index_state(state_path, processed_files)
 
         logging.info(
             "Finished %s: indexed=%s skipped=%s last_line=%s",
@@ -269,7 +290,7 @@ def main() -> None:
         )
 
         if budget is not None and indexed_total >= budget:
-            logging.info("Reached --max-items=%s", args.max_items)
+            logging.info("Reached --max-items=%s", config.max_items)
             break
 
     logging.info(
@@ -280,5 +301,9 @@ def main() -> None:
     )
 
 
+def cli_main(argv: Sequence[str] | None = None) -> None:
+    run(IndexConfig.from_args(parse_args(argv)))
+
+
 if __name__ == "__main__":
-    main()
+    cli_main()

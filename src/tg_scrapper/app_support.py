@@ -8,11 +8,20 @@ from dotenv import load_dotenv
 
 JsonObject = dict[str, object]
 JsonDict = dict[str, Any]
-REPO_ROOT = Path(__file__).resolve().parent
+
+
+def load_working_dir_dotenv(
+    filename: str = ".env",
+    *,
+    override: bool = True,
+    directory: Path | None = None,
+) -> None:
+    search_dir = directory or Path.cwd()
+    load_dotenv(dotenv_path=search_dir / filename, override=override)
 
 
 def load_repo_dotenv(filename: str = ".env", *, override: bool = True) -> None:
-    load_dotenv(dotenv_path=REPO_ROOT / filename, override=override)
+    load_working_dir_dotenv(filename, override=override)
 
 
 def get_first_env(*names: str) -> str | None:
